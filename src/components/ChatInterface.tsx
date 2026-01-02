@@ -2,15 +2,23 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChatStore } from "@/store/useChatStore";
+import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Send, User, Bot, Trash2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-export function ChatInterface() {
+interface ChatInterfaceProps {
+  analysisId?: number | null;
+}
+
+export function ChatInterface({ analysisId }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
-  const { messages, addMessage, isLoading, setLoading, clearMessages } = useChatStore();
+  const { messages, addMessage, updateLastMessage, setMessages, isLoading, setLoading, clearMessages } = useChatStore();
+  const { token } = useAuthStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -21,14 +29,52 @@ export function ChatInterface() {
     scrollToBottom();
   }, [messages]);
 
+  // Load messages from DB if analysisId is provided
+  useEffect(() => {
+    if (analysisId && token) {
+      fetch(`/api/chat/messages?analysisId=${analysisId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.messages) {
+          setMessages(data.messages.map((m: any) => ({
+            id: m.id.toString(),
+            role: m.role,
+            content: m.content,
+            createdAt: new Date(m.created_at).getTime()
+          })));
+        }
+      })
+      .catch(err => console.error("Failed to load messages:", err));
+    }
+  }, [analysisId, token, setMessages]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMessage = { role: "user" as const, content: input };
+    const userMessageContent = input;
+    const userMessage = { role: "user" as const, content: userMessageContent };
     addMessage(userMessage);
     setInput("");
     setLoading(true);
+
+    // Save user message to DB
+    if (analysisId && token) {
+      fetch("/api/chat/messages", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          analysisId,
+          role: "user",
+          content: userMessageContent
+        }),
+      }).catch(err => console.error("Failed to save user message:", err));
+    }
 
     try {
       const response = await fetch("/api/chat", {
@@ -44,8 +90,39 @@ export function ChatInterface() {
 
       if (!response.ok) throw new Error("Failed to fetch response");
 
-      const data = await response.json();
-      addMessage({ role: "assistant", content: data.content });
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      if (!reader) throw new Error("No reader available");
+
+      addMessage({ role: "assistant", content: "" });
+      let assistantContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        assistantContent += chunk;
+        updateLastMessage(chunk);
+      }
+
+      // Save assistant message to DB
+      if (analysisId && token) {
+        fetch("/api/chat/messages", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            analysisId,
+            role: "assistant",
+            content: assistantContent
+          }),
+        }).catch(err => console.error("Failed to save assistant message:", err));
+      }
     } catch (error) {
       console.error("Chat Error:", error);
       addMessage({ role: "assistant", content: "Error: Could not connect to the AI service." });
@@ -105,11 +182,40 @@ export function ChatInterface() {
                     : "bg-section/50 text-black/80 border border-black/[0.02]"
                 )}
               >
-                {message.content}
+                {message.role === "user" ? (
+                  message.content
+                ) : (
+                   <div className="prose prose-sm max-w-none break-words">
+                     <ReactMarkdown 
+                       remarkPlugins={[remarkGfm]}
+                       components={{
+                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                      ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal ml-4 mb-2">{children}</ol>,
+                      li: ({ children }) => <li className="mb-1">{children}</li>,
+                      code: ({ children }) => (
+                        <code className="bg-black/5 px-1 rounded text-xs font-mono">{children}</code>
+                      ),
+                      pre: ({ children }) => (
+                        <pre className="bg-black/5 p-2 rounded-lg overflow-x-auto my-2 text-xs font-mono">
+                          {children}
+                        </pre>
+                      ),
+                      a: ({ children, href }) => (
+                        <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
+              )}
               </div>
             </div>
           ))}
-          {isLoading && (
+          {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
             <div className="flex gap-3 mr-auto max-w-[85%] animate-pulse">
               <div className="w-8 h-8 rounded-full bg-white border border-black/[0.04] flex items-center justify-center embossed-sm">
                 <Bot size={16} />

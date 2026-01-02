@@ -13,5 +13,6 @@ export interface ChatState {
   addMessage: (message: Omit<Message, "id" | "createdAt">) => void;
   setMessages: (messages: Message[]) => void;
   setLoading: (isLoading: boolean) => void;
+  updateLastMessage: (content: string) => void;
   clearMessages: () => void;
 }
