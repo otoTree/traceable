@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronLeft, Send, Loader2, Triangle } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { ChevronLeft, Loader2, Triangle } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useAnalysisStore } from "@/store/useAnalysisStore";
 import React from "react";
+import { ChatInput } from "@/components/ChatInput";
+import { Markdown } from "@/components/Markdown";
 
 interface Message {
   id: string;
@@ -19,47 +19,24 @@ interface Message {
 }
 
 const ChatMessage = React.memo(({ message }: { message: Message }) => {
+  const isAssistant = message.role === "assistant";
+  
   return (
     <div
       className="flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-row items-start"
     >
       <div className="pt-1.5 shrink-0">
-        {message.role === "user" ? (
+        {!isAssistant ? (
           <Triangle size={10} className="text-black/40 rotate-180" fill="currentColor" />
         ) : (
           <Triangle size={10} className="text-black" fill="currentColor" />
         )}
       </div>
-      <div className="flex-1 text-sm font-light leading-relaxed text-black/80">
-        {message.role === "user" ? (
+      <div className="flex-1 text-sm font-light leading-relaxed text-black/80 min-w-0">
+        {!isAssistant ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
-          <div className="prose prose-sm max-w-none break-words">
-            <ReactMarkdown 
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal ml-4 mb-2">{children}</ol>,
-                li: ({ children }) => <li className="mb-1">{children}</li>,
-                code: ({ children }) => (
-                  <code className="bg-black/5 px-1 rounded text-xs font-mono">{children}</code>
-                ),
-                pre: ({ children }) => (
-                  <pre className="bg-black/5 p-2 rounded-lg overflow-x-auto my-2 text-xs font-mono">
-                    {children}
-                  </pre>
-                ),
-                a: ({ children, href }: any) => (
-                  <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
-                    {children}
-                  </a>
-                ),
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          </div>
+          <Markdown content={message.content} />
         )}
       </div>
     </div>
@@ -83,9 +60,28 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastAnalyzedImagesRef = useRef<string>("");
   const autoScrollRef = useRef(true);
+
+  // Fetch follow-up suggestions
+  const fetchSuggestions = useCallback(async (currentMessages: Message[]) => {
+    try {
+      const response = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: currentMessages }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestions(data.suggestions || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch suggestions:", err);
+    }
+  }, []);
 
   // Handle manual scroll to toggle auto-scroll
   useEffect(() => {
@@ -123,6 +119,11 @@ export default function ChatPage() {
             content: m.content
           }));
           setMessages(formattedMessages);
+          
+          // Fetch suggestions if we have messages
+          if (formattedMessages.length > 0) {
+            fetchSuggestions(formattedMessages);
+          }
         }
       })
       .catch(err => console.error("Failed to load messages:", err));
@@ -152,7 +153,7 @@ export default function ChatPage() {
         .catch(err => console.error("Failed to load analysis details:", err));
       }
     }
-  }, [selectedId, token, analyzedImages.length, initialAnalysis, setAnalyzedImages, setInitialAnalysis, messages.length]);
+  }, [selectedId, token, analyzedImages.length, initialAnalysis, setAnalyzedImages, setInitialAnalysis, messages.length, fetchSuggestions]);
 
   // Initialize chat or start analysis
   useEffect(() => {
@@ -232,6 +233,10 @@ export default function ChatPage() {
           
           setInitialAnalysis(accumulated);
           
+          // Fetch suggestions after initial analysis
+          const finalMessages: Message[] = [{ id: initialId, role: "assistant", content: accumulated }];
+          fetchSuggestions(finalMessages);
+          
           // Save to history if logged in
           if (user && token) {
             fetch("/api/history", {
@@ -284,19 +289,18 @@ export default function ChatPage() {
     };
 
     runInitialAnalysis();
-  }, [initialAnalysis, analyzedImages, messages.length, setInitialAnalysis, user, token, fetchHistory, setSelectedId]);
+  }, [initialAnalysis, analyzedImages, messages.length, setInitialAnalysis, user, token, fetchHistory, setSelectedId, fetchSuggestions]);
 
   // Scroll to bottom when messages change
-  useEffect(() => {
-    if (scrollAreaRef.current && autoScrollRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
-        requestAnimationFrame(() => {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight;
-        });
-      }
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    if (autoScrollRef.current && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior });
     }
-  }, [messages]);
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   const handleSend = async (content: string = input) => {
     if (!content.trim() || isLoading) return;
@@ -308,6 +312,7 @@ export default function ChatPage() {
     };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setSuggestions([]); // Clear suggestions when sending
     setIsLoading(true);
     autoScrollRef.current = true; // Re-enable auto-scroll on send
 
@@ -388,6 +393,14 @@ export default function ChatPage() {
           return newMessages;
         });
       }
+
+      // Fetch suggestions after assistant finishes
+      const updatedMessages: Message[] = [
+        ...messages,
+        userMessage,
+        { id: assistantId, role: "assistant", content: assistantContent }
+      ];
+      fetchSuggestions(updatedMessages);
 
       // Save assistant message to DB if analysisId exists
       if (selectedId && token) {
@@ -474,6 +487,7 @@ export default function ChatPage() {
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
+              <div ref={messagesEndRef} className="h-4" />
               {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
                 <div className="flex gap-4 items-start">
                   <div className="pt-1.5 shrink-0">
@@ -490,28 +504,13 @@ export default function ChatPage() {
       </div>
 
       {/* Input Area */}
-      <div className="fixed bottom-0 w-full bg-white/80 backdrop-blur-md border-t border-black/[0.04] p-6 flex justify-center">
-        <div className="w-full max-w-3xl space-y-4">
-          <div className="relative">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="输入您想问的问题..."
-              className="w-full h-12 pl-6 pr-14 rounded-full bg-white embossed-sm border border-black/[0.04] focus:outline-none focus:ring-1 focus:ring-black/10 text-sm font-light"
-              disabled={isLoading}
-            />
-            <button
-              onClick={() => handleSend()}
-              disabled={!input.trim() || isLoading}
-              className="absolute right-2 top-1.5 w-9 h-9 rounded-full bg-black text-white flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-20"
-            >
-              <Send size={16} />
-            </button>
-          </div>
-        </div>
-      </div>
+      <ChatInput
+        input={input}
+        setInput={setInput}
+        onSend={handleSend}
+        isLoading={isLoading}
+        suggestions={suggestions}
+      />
     </main>
   );
 }
