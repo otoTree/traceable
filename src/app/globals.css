@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 100% 0 0;
+  --foreground: 0% 0 0;
+  --section: 98.5% 0 0;
+  --card: 100% 0 0;
+  --card-foreground: 0% 0 0;
+  --popover: 100% 0 0;
+  --popover-foreground: 0% 0 0;
+  --primary: 0% 0 0;
+  --primary-foreground: 100% 0 0;
+  --secondary: 96% 0 0;
+  --secondary-foreground: 0% 0 0;
+  --muted: 96% 0 0;
+  --muted-foreground: 45% 0 0;
+  --accent: 96% 0 0;
+  --accent-foreground: 0% 0 0;
+  --destructive: 60% 0.15 25;
+  --destructive-foreground: 100% 0 0;
+  --border: 0% 0 0 / 0.08;
+  --input: 0% 0 0 / 0.08;
+  --ring: 0% 0 0 / 0.1;
+  --radius: 0.75rem;
+}
+
+body {
+  color: oklch(var(--foreground));
+  background: oklch(var(--background));
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+@layer components {
+  .embossed {
+    @apply shadow-[inset_2px_2px_5px_rgba(0,0,0,0.05),_inset_-2px_-2px_5px_rgba(255,255,255,0.7)] border border-black/[0.04] rounded-xl bg-white;
+  }
+  
+  .embossed-interactive {
+    @apply embossed transition-all active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),_inset_-4px_-4px_8px_rgba(255,255,255,0.5)] active:scale-[0.98] cursor-pointer;
+  }
+}
