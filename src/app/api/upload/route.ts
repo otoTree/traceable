@@ -37,11 +37,9 @@ export async function POST(req: NextRequest) {
     const cleanEndpoint = endpoint.replace(/^https?:\/\//, "");
     const protocol = endpoint.startsWith("http://") ? "http" : "https";
 
-    if (process.env.S3_FORCE_PATH_STYLE === "true") {
-      url = `${protocol}://${cleanEndpoint}/${bucketName}/${filename}`;
-    } else {
-      url = `${protocol}://${bucketName}.${cleanEndpoint}/${filename}`;
-    }
+    // Sealos OSS typically uses path style: https://{endpoint}/{bucket}/{key}
+    // We force this to match our s3Client configuration in lib/s3.ts
+    url = `${protocol}://${cleanEndpoint}/${bucketName}/${filename}`;
     
     // If a public URL override is provided (e.g., CDN), use that instead
     if (process.env.S3_PUBLIC_URL) {
