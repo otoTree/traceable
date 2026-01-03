@@ -29,14 +29,42 @@ export async function POST(req: NextRequest) {
 
     const apiMessages = [
       { role: "system", content: SUGGEST_PROMPT },
-      ...contextMessages.map((m: any) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      ...contextMessages.map((m: any) => {
+        let content = m.content;
+        
+        if (Array.isArray(content)) {
+          content = content.map((part: any) => {
+            if (typeof part === 'string') return { type: 'text', text: part };
+            if (part.type === 'text') return { type: 'text', text: part.text || part.content || '' };
+            
+            if (part.type === 'image_url' || part.type === 'image' || part.imageUrl || part.url) {
+              let url = '';
+              if (typeof part.image_url === 'string') url = part.image_url;
+              else if (typeof part.image_url === 'object' && part.image_url?.url) url = part.image_url.url;
+              else if (part.imageUrl) url = part.imageUrl;
+              else if (part.url) url = part.url;
+
+              if (url) return { type: 'image_url', image_url: { url } };
+            }
+            return part;
+          });
+        }
+
+        return {
+          role: m.role,
+          content: content,
+        };
+      }),
     ];
 
+    let model = process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || "gpt-4o";
+    // Remove any potential OpenRouter prefix if we're not using OpenRouter
+    if (!process.env.OPENROUTER_API_KEY && model.includes('/')) {
+      model = model.split('/').pop() || model;
+    }
+
     const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o",
+      model: model,
       messages: apiMessages,
       max_tokens: 200,
       temperature: 0.7,

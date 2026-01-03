@@ -92,42 +92,43 @@ export async function POST(req: NextRequest) {
 
             // Handle image parts
             if (part.type === 'image_url' || part.type === 'image' || part.imageUrl || part.url) {
-               let url = '';
-               if (typeof part.image_url === 'string') {
-                 url = part.image_url;
-               } else if (typeof part.image_url === 'object' && part.image_url?.url) {
-                 url = part.image_url.url;
-               } else if (part.imageUrl) {
-                 url = part.imageUrl;
-               } else if (part.url) {
-                 url = part.url;
-               }
+              let url = '';
+              if (typeof part.image_url === 'string') {
+                url = part.image_url;
+              } else if (typeof part.image_url === 'object' && part.image_url?.url) {
+                url = part.image_url.url;
+              } else if (part.imageUrl) {
+                url = part.imageUrl;
+              } else if (part.url) {
+                url = part.url;
+              }
 
-               if (url) {
-                 return {
-                   type: 'image_url',
-                   image_url: { 
-                     url,
-                     // Preserve detail if provided
-                     ...(part.image_url?.detail ? { detail: part.image_url.detail } : {}),
-                     ...(part.detail ? { detail: part.detail } : {})
-                   }
-                 };
-               }
+              if (url) {
+                return {
+                  type: 'image_url',
+                  image_url: { url }
+                };
+              }
             }
             return part;
           });
         }
 
         return {
-          role: m.role,
-          content: content,
+          role: m.role || "user",
+          content: content || "",
         };
       }),
     ];
 
+    let model = process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || "gpt-4o";
+    // Remove any potential OpenRouter prefix if we're not using OpenRouter
+    if (!process.env.OPENROUTER_API_KEY && model.includes('/')) {
+      model = model.split('/').pop() || model;
+    }
+
     const stream = await openai.chat.completions.create({
-      model: process.env.OPENROUTER_MODEL || "openai/gpt-4o",
+      model: model,
       messages: apiMessages as any,
       stream: true,
     });
@@ -159,10 +160,15 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("AI API Error:", error);
+    console.error("AI API Error Details:", {
+      message: error.message,
+      status: error.status,
+      name: error.name,
+      headers: error.headers,
+    });
     return NextResponse.json(
       { error: error.message || "Something went wrong" },
-      { status: 500 }
+      { status: error.status || 500 }
     );
   }
 }
