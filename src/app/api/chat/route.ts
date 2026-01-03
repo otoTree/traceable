@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { OpenRouter } from "@openrouter/sdk";
-
-const openrouter = new OpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY || "",
-});
+import openai from "@/lib/openai";
 
 const SYSTEM_PROMPT = `
 # Role
@@ -78,13 +74,48 @@ export async function POST(req: NextRequest) {
     // Ensure system prompt is present
     const apiMessages = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...messages.map((m: any) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      ...messages.map((m: any) => {
+        // Normalize content to ensure it matches OpenAI format
+        let content = m.content;
+        
+        if (Array.isArray(content)) {
+          content = content.map((part: any) => {
+            // Ensure type is valid
+            if (part.type === 'text') {
+              return { type: 'text', text: part.text };
+            }
+            if (part.type === 'image_url' || part.type === 'image') {
+               // Handle different image formats
+               let url = '';
+               if (typeof part.image_url === 'string') {
+                 url = part.image_url;
+               } else if (typeof part.image_url === 'object' && part.image_url.url) {
+                 return part; // Already correct
+               } else if (part.imageUrl) {
+                 url = part.imageUrl;
+               } else if (part.url) {
+                 url = part.url;
+               }
+
+               if (url) {
+                 return {
+                   type: 'image_url',
+                   image_url: { url }
+                 };
+               }
+            }
+            return part;
+          });
+        }
+
+        return {
+          role: m.role,
+          content: content,
+        };
+      }),
     ];
 
-    const stream = await openrouter.chat.send({
+    const stream = await openai.chat.completions.create({
       model: process.env.OPENROUTER_MODEL || "openai/gpt-4o",
       messages: apiMessages as any,
       stream: true,
