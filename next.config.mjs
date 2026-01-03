@@ -13,6 +13,11 @@ const nextConfig = {
         hostname: '**.objectstorageapi.bja.sealos.run',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: '*.public.blob.vercel-storage.com',
+        pathname: '/**',
+      },
     ],
   },
 };

@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { initDb } from "@/lib/schema";
 import { jwtVerify } from "jose";
 import { readFile } from "fs/promises";
 import { join } from "path";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "default_secret");
+
+async function queryWithRetry(text: string, params?: any[]) {
+  try {
+    return await query(text, params);
+  } catch (error: any) {
+    // If column does not exist (42703), try to migrate and retry
+    if (error.code === "42703") {
+      console.log("Database schema mismatch detected, attempting to migrate...");
+      await initDb();
+      return await query(text, params);
+    }
+    throw error;
+  }
+}
 
 async function urlToBase64(url: string | null) {
   if (!url) return url;
@@ -49,7 +64,7 @@ export async function GET(req: NextRequest) {
     const id = searchParams.get("id");
 
     if (id) {
-      const result = await query(
+      const result = await queryWithRetry(
         "SELECT id, result, image1_url, image2_url, images, created_at FROM analyses WHERE id = $1 AND user_id = $2",
         [id, userId]
       );
@@ -59,7 +74,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ analysis: result.rows[0] });
     }
 
-    const result = await query(
+    const result = await queryWithRetry(
       "SELECT id, result, image1_url, image2_url, images, created_at FROM analyses WHERE user_id = $1 ORDER BY created_at DESC",
       [userId]
     );
@@ -106,7 +121,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const dbResult = await query(
+    const dbResult = await queryWithRetry(
       "INSERT INTO analyses (user_id, result, image1_url, image2_url, images) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at",
       [userId, result, base64Image1, base64Image2, processedImages]
     );
