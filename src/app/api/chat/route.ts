@@ -80,17 +80,23 @@ export async function POST(req: NextRequest) {
         
         if (Array.isArray(content)) {
           content = content.map((part: any) => {
-            // Ensure type is valid
-            if (part.type === 'text') {
-              return { type: 'text', text: part.text };
+            // If part is just a string, convert it to a text part
+            if (typeof part === 'string') {
+              return { type: 'text', text: part };
             }
-            if (part.type === 'image_url' || part.type === 'image') {
-               // Handle different image formats
+
+            // Handle text parts
+            if (part.type === 'text') {
+              return { type: 'text', text: part.text || part.content || '' };
+            }
+
+            // Handle image parts
+            if (part.type === 'image_url' || part.type === 'image' || part.imageUrl || part.url) {
                let url = '';
                if (typeof part.image_url === 'string') {
                  url = part.image_url;
-               } else if (typeof part.image_url === 'object' && part.image_url.url) {
-                 return part; // Already correct
+               } else if (typeof part.image_url === 'object' && part.image_url?.url) {
+                 url = part.image_url.url;
                } else if (part.imageUrl) {
                  url = part.imageUrl;
                } else if (part.url) {
@@ -100,7 +106,12 @@ export async function POST(req: NextRequest) {
                if (url) {
                  return {
                    type: 'image_url',
-                   image_url: { url }
+                   image_url: { 
+                     url,
+                     // Preserve detail if provided
+                     ...(part.image_url?.detail ? { detail: part.image_url.detail } : {}),
+                     ...(part.detail ? { detail: part.detail } : {})
+                   }
                  };
                }
             }

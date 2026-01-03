@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Send, User, Bot, Trash2 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Markdown } from "@/components/Markdown";
 
 interface ChatInterfaceProps {
   analysisId?: number | null;
@@ -183,35 +182,22 @@ export function ChatInterface({ analysisId }: ChatInterfaceProps) {
                 )}
               >
                 {message.role === "user" ? (
-                  message.content
+                  typeof message.content === "string" ? (
+                    message.content
+                  ) : (
+                    <div className="space-y-2">
+                      {message.content.map((part, i) => {
+                        if (part.type === "text") return <p key={i}>{part.text}</p>;
+                        if (part.type === "image_url") return (
+                          <img key={i} src={part.image_url.url} alt="User" className="max-w-full rounded-lg" />
+                        );
+                        return null;
+                      })}
+                    </div>
+                  )
                 ) : (
-                   <div className="prose prose-sm max-w-none break-words">
-                     <ReactMarkdown 
-                       remarkPlugins={[remarkGfm]}
-                       components={{
-                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                      ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal ml-4 mb-2">{children}</ol>,
-                      li: ({ children }) => <li className="mb-1">{children}</li>,
-                      code: ({ children }) => (
-                        <code className="bg-black/5 px-1 rounded text-xs font-mono">{children}</code>
-                      ),
-                      pre: ({ children }) => (
-                        <pre className="bg-black/5 p-2 rounded-lg overflow-x-auto my-2 text-xs font-mono">
-                          {children}
-                        </pre>
-                      ),
-                      a: ({ children, href }) => (
-                        <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
-                          {children}
-                        </a>
-                      ),
-                    }}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
-                </div>
-              )}
+                  <Markdown content={typeof message.content === "string" ? message.content : ""} />
+                )}
               </div>
             </div>
           ))}

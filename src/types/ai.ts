@@ -1,9 +1,15 @@
 export type MessageRole = "user" | "assistant" | "system";
 
+export type MessageContentPart = 
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } };
+
+export type MessageContent = string | MessageContentPart[];
+
 export interface Message {
   id: string;
   role: MessageRole;
-  content: string;
+  content: MessageContent;
   createdAt: number;
 }
 

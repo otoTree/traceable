@@ -11,16 +11,45 @@ import { useAnalysisStore } from "@/store/useAnalysisStore";
 import React from "react";
 import { ChatInput } from "@/components/ChatInput";
 import { Markdown } from "@/components/Markdown";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-}
+import { Message } from "@/types/ai";
 
 const ChatMessage = React.memo(({ message }: { message: Message }) => {
   const isAssistant = message.role === "assistant";
   
+  const renderContent = () => {
+    if (typeof message.content === "string") {
+      return isAssistant ? (
+        <Markdown content={message.content} />
+      ) : (
+        <p className="whitespace-pre-wrap">{message.content}</p>
+      );
+    }
+
+    if (Array.isArray(message.content)) {
+      return (
+        <div className="space-y-2">
+          {message.content.map((part, i) => {
+            if (part.type === "text") {
+              return <p key={i} className="whitespace-pre-wrap">{part.text}</p>;
+            }
+            if (part.type === "image_url") {
+              return (
+                <img 
+                  key={i} 
+                  src={part.image_url.url} 
+                  alt="User uploaded" 
+                  className="max-w-full rounded-lg border border-black/[0.08]"
+                />
+              );
+            }
+            return null;
+          })}
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div
       className="flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-row items-start"
@@ -33,11 +62,7 @@ const ChatMessage = React.memo(({ message }: { message: Message }) => {
         )}
       </div>
       <div className="flex-1 text-sm font-light leading-relaxed text-black/80 min-w-0">
-        {!isAssistant ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
-        ) : (
-          <Markdown content={message.content} />
-        )}
+        {renderContent()}
       </div>
     </div>
   );
@@ -116,7 +141,8 @@ export default function ChatPage() {
           const formattedMessages = data.messages.map((m: any) => ({
             id: m.id?.toString() || Math.random().toString(36).substring(7),
             role: m.role,
-            content: m.content
+            content: m.content,
+            createdAt: m.created_at ? new Date(m.created_at).getTime() : Date.now()
           }));
           setMessages(formattedMessages);
           
@@ -167,6 +193,7 @@ export default function ChatPage() {
               id: "initial-analysis",
               role: "assistant",
               content: `我已经完成了您的笔迹分析。以下是我的初步发现：\n\n${initialAnalysis}\n\n关于您的笔迹，您还有什么想深入了解的吗？`,
+              createdAt: Date.now(),
             },
           ]);
         }
@@ -213,7 +240,7 @@ export default function ChatPage() {
           if (!reader) throw new Error("No reader");
 
           const initialId = "initial-streaming-" + Date.now();
-          setMessages([{ id: initialId, role: "assistant", content: "" }]);
+          setMessages([{ id: initialId, role: "assistant", content: "", createdAt: Date.now() }]);
 
           while (true) {
             const { done, value } = await reader.read();
@@ -236,7 +263,7 @@ export default function ChatPage() {
           setInitialAnalysis(accumulated);
           
           // Fetch suggestions after initial analysis
-          const finalMessages: Message[] = [{ id: initialId, role: "assistant", content: accumulated }];
+          const finalMessages: Message[] = [{ id: initialId, role: "assistant", content: accumulated, createdAt: Date.now() }];
           fetchSuggestions(finalMessages);
           
           // Save to history if logged in
@@ -284,7 +311,7 @@ export default function ChatPage() {
           
         } catch (err) {
           console.error(err);
-          setMessages([{ id: "error-" + Date.now(), role: "assistant", content: "抱歉，分析过程中出现了问题。请稍后再试。" }]);
+          setMessages([{ id: "error-" + Date.now(), role: "assistant", content: "抱歉，分析过程中出现了问题。请稍后再试。", createdAt: Date.now() }]);
         } finally {
           setIsLoading(false);
         }
@@ -311,7 +338,8 @@ export default function ChatPage() {
     const userMessage: Message = { 
       id: "user-" + Date.now(),
       role: "user", 
-      content 
+      content,
+      createdAt: Date.now()
     };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -377,7 +405,7 @@ export default function ChatPage() {
       if (!reader) throw new Error("No reader");
 
       const assistantId = "assistant-" + Date.now();
-      setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
+      setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "", createdAt: Date.now() }]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -401,7 +429,7 @@ export default function ChatPage() {
       const updatedMessages: Message[] = [
         ...messages,
         userMessage,
-        { id: assistantId, role: "assistant", content: assistantContent }
+        { id: assistantId, role: "assistant", content: assistantContent, createdAt: Date.now() }
       ];
       fetchSuggestions(updatedMessages);
 
@@ -424,7 +452,7 @@ export default function ChatPage() {
       console.error("Chat error:", error);
       setMessages((prev) => [
         ...prev,
-        { id: "error-" + Date.now(), role: "assistant", content: "抱歉，我现在遇到了一点问题。请稍后再试。" },
+        { id: "error-" + Date.now(), role: "assistant", content: "抱歉，我现在遇到了一点问题。请稍后再试。", createdAt: Date.now() },
       ]);
     } finally {
       setIsLoading(false);
