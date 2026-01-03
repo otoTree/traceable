@@ -20,7 +20,7 @@ interface CameraModalProps {
 export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
@@ -35,7 +35,7 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
         },
       };
       const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(newStream);
+      streamRef.current = newStream;
       if (videoRef.current) {
         videoRef.current.srcObject = newStream;
         videoRef.current.onloadedmetadata = () => {
@@ -50,12 +50,12 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
   }, []);
 
   const stopCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
     setIsCameraReady(false);
-  }, [stream]);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
