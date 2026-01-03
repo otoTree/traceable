@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import openai from "@/lib/openai";
+import { OpenRouter } from "@openrouter/sdk";
+
+const openrouter = new OpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY || "",
+});
 
 const SYSTEM_PROMPT = `
 # Role
@@ -80,27 +84,32 @@ export async function POST(req: NextRequest) {
       })),
     ];
 
-    const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o",
-      messages: apiMessages,
+    const stream = await openrouter.chat.send({
+      model: process.env.OPENROUTER_MODEL || "openai/gpt-4o",
+      messages: apiMessages as any,
       stream: true,
-      max_tokens: 4000,
     });
 
     // Create a streaming response
-    const stream = new ReadableStream({
+    const readableStream = new ReadableStream({
       async start(controller) {
-        for await (const chunk of response) {
-          const content = chunk.choices[0]?.delta?.content || "";
-          if (content) {
-            controller.enqueue(new TextEncoder().encode(content));
+        try {
+          for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content || "";
+            if (content) {
+              controller.enqueue(new TextEncoder().encode(content));
+            }
           }
+        } catch (error) {
+          console.error("Stream error:", error);
+          controller.error(error);
+        } finally {
+          controller.close();
         }
-        controller.close();
       },
     });
 
-    return new Response(stream, {
+    return new Response(readableStream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",

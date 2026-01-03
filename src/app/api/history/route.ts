@@ -1,8 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { jwtVerify } from "jose";
+import { readFile } from "fs/promises";
+import { join } from "path";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "default_secret");
+
+async function urlToBase64(url: string | null) {
+  if (!url || !url.includes("/uploads/")) return url;
+  
+  try {
+    const uploadPathMatch = url.match(/\/uploads\/[^/?#]+/);
+    if (!uploadPathMatch) return url;
+    
+    const relativePath = uploadPathMatch[0];
+    const filePath = join(process.cwd(), "public", relativePath);
+    const buffer = await readFile(filePath);
+    const base64 = buffer.toString("base64");
+    const ext = relativePath.split(".").pop()?.toLowerCase();
+    const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.error(`Error converting ${url} to base64:`, error);
+    return url;
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -58,9 +80,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Result is required" }, { status: 400 });
     }
 
+    // Convert URLs to base64 for persistent storage
+    const base64Image1 = await urlToBase64(image1_url);
+    const base64Image2 = await urlToBase64(image2_url);
+    
+    // Also convert any images in the result object if it has an images array
+    if (result && Array.isArray(result.images)) {
+      result.images = await Promise.all(
+        result.images.map((url: string) => urlToBase64(url))
+      );
+    }
+
     const dbResult = await query(
       "INSERT INTO analyses (user_id, result, image1_url, image2_url) VALUES ($1, $2, $3, $4) RETURNING id, created_at",
-      [userId, result, image1_url, image2_url]
+      [userId, result, base64Image1, base64Image2]
     );
 
     return NextResponse.json({ 

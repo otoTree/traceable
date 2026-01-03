@@ -36,17 +36,20 @@ export function HandwritingAnalyzer() {
     setIsUploading(true);
 
     try {
-      const newImagePromises = files.map((file) => {
-        return new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
         });
+        if (!res.ok) throw new Error("Upload failed");
+        const data = await res.json();
+        return data.url;
       });
 
-      const newImages = await Promise.all(newImagePromises);
-      setImages((prev) => [...prev, ...newImages]);
+      const newImageUrls = await Promise.all(uploadPromises);
+      setImages((prev) => [...prev, ...newImageUrls]);
     } catch (err) {
       setError("图片上传失败，请重试。");
     } finally {
