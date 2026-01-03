@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Upload, X, Sparkles } from "lucide-react";
+import { Upload, X, Sparkles, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useAnalysisStore } from "@/store/useAnalysisStore";
+import { CameraModal } from "./CameraModal";
 
 export function HandwritingAnalyzer() {
   const router = useRouter();
@@ -21,10 +22,10 @@ export function HandwritingAnalyzer() {
   } = useAnalysisStore();
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const token = useAuthStore((state) => state.token);
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const uploadFiles = async (files: File[]) => {
     if (files.length === 0) return;
 
     if (images.length + files.length > 10) {
@@ -55,6 +56,11 @@ export function HandwritingAnalyzer() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    await uploadFiles(files);
   };
 
   const removeImage = (index: number) => {
@@ -100,27 +106,51 @@ export function HandwritingAnalyzer() {
           ))}
 
           {images.length < 10 && (
-            <label className={cn(
-              "relative aspect-square rounded-xl border-2 border-dashed border-black/5 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer hover:border-black/10 bg-section/30 hover:bg-section/50",
-              isUploading && "opacity-50 cursor-wait"
-            )}>
-              <div className="p-3 rounded-full bg-white shadow-sm border border-black/[0.04]">
-                <Upload size={20} className="text-black/60" />
-              </div>
-              <p className="mt-2 text-[10px] font-medium text-black/40 uppercase tracking-widest">添加照片</p>
-              <input
-                type="file"
-                className="hidden"
-                accept="image/*"
-                multiple
-                onChange={handleImageUpload}
-                disabled={isUploading}
-              />
-            </label>
-          )}
-        </div>
+            <>
+              <label className={cn(
+                "relative aspect-square rounded-xl border-2 border-dashed border-black/5 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer hover:border-black/10 bg-section/30 hover:bg-section/50",
+                isUploading && "opacity-50 cursor-wait"
+              )}>
+                <div className="p-3 rounded-full bg-white shadow-sm border border-black/[0.04]">
+                  <Upload size={20} className="text-black/60" />
+                </div>
+                <p className="mt-2 text-[10px] font-medium text-black/40 uppercase tracking-widest">相册导入</p>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  disabled={isUploading}
+                />
+              </label>
 
-        {/* Action Button */}
+              <button
+                 type="button"
+                 onClick={() => setIsCameraOpen(true)}
+                 className={cn(
+                   "relative aspect-square rounded-xl border-2 border-dashed border-black/5 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer hover:border-black/10 bg-section/30 hover:bg-section/50",
+                   isUploading && "opacity-50 cursor-wait"
+                 )}
+                 disabled={isUploading}
+               >
+                 <div className="p-3 rounded-full bg-white shadow-sm border border-black/[0.04]">
+                   <Camera size={20} className="text-black/60" />
+                 </div>
+                 <p className="mt-2 text-[10px] font-medium text-black/40 uppercase tracking-widest">直接拍照</p>
+               </button>
+             </>
+           )}
+         </div>
+
+         {/* Camera Modal */}
+         <CameraModal 
+           isOpen={isCameraOpen} 
+           onClose={() => setIsCameraOpen(false)}
+           onCapture={(file) => uploadFiles([file])}
+         />
+
+         {/* Action Button */}
         <div className="flex flex-col items-center gap-4">
           <Button
             onClick={startAnalysis}
