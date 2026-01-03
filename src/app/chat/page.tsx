@@ -136,9 +136,11 @@ export default function ChatPage() {
         .then(res => res.json())
         .then(data => {
           if (data.analysis) {
-            const { image1_url, image2_url, result } = data.analysis;
-            // Prefer images from result JSON if available
-            if (result && result.images && Array.isArray(result.images)) {
+            const { image1_url, image2_url, images, result } = data.analysis;
+            // Priority: images column -> result.images -> image1/2
+            if (images && Array.isArray(images) && images.length > 0) {
+              setAnalyzedImages(images);
+            } else if (result && result.images && Array.isArray(result.images)) {
               setAnalyzedImages(result.images);
             } else if (image1_url && image2_url) {
               setAnalyzedImages([image1_url, image2_url]);
@@ -251,7 +253,8 @@ export default function ChatPage() {
                   images: analyzedImages 
                 },
                 image1_url: analyzedImages[0],
-                image2_url: analyzedImages[1] || null
+                image2_url: analyzedImages[1] || null,
+                images: analyzedImages
               }),
             })
             .then(res => res.json())

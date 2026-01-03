@@ -7,23 +7,31 @@ import { join } from "path";
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "default_secret");
 
 async function urlToBase64(url: string | null) {
-  if (!url || !url.includes("/uploads/")) return url;
+  if (!url) return url;
+  if (url.startsWith("data:")) return url;
   
-  try {
-    const uploadPathMatch = url.match(/\/uploads\/[^/?#]+/);
-    if (!uploadPathMatch) return url;
-    
-    const relativePath = uploadPathMatch[0];
-    const filePath = join(process.cwd(), "public", relativePath);
-    const buffer = await readFile(filePath);
-    const base64 = buffer.toString("base64");
-    const ext = relativePath.split(".").pop()?.toLowerCase();
-    const mimeType = ext === "png" ? "image/png" : "image/jpeg";
-    return `data:${mimeType};base64,${base64}`;
-  } catch (error) {
-    console.error(`Error converting ${url} to base64:`, error);
-    return url;
+  // If it's a local upload, try to read it
+  if (url.includes("/uploads/") && !url.startsWith("http")) {
+    try {
+      const uploadPathMatch = url.match(/\/uploads\/[^/?#]+/);
+      if (!uploadPathMatch) return url;
+      
+      const relativePath = uploadPathMatch[0];
+      const filePath = join(process.cwd(), "public", relativePath);
+      const buffer = await readFile(filePath);
+      const base64 = buffer.toString("base64");
+      const ext = relativePath.split(".").pop()?.toLowerCase();
+      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+      return `data:${mimeType};base64,${base64}`;
+    } catch (error) {
+      console.error(`Error converting ${url} to base64:`, error);
+      return url;
+    }
   }
+  
+  // For remote URLs (like OSS), we can return them as is
+  // The AI model can usually fetch them directly
+  return url;
 }
 
 export async function GET(req: NextRequest) {
@@ -42,7 +50,7 @@ export async function GET(req: NextRequest) {
 
     if (id) {
       const result = await query(
-        "SELECT id, result, image1_url, image2_url, created_at FROM analyses WHERE id = $1 AND user_id = $2",
+        "SELECT id, result, image1_url, image2_url, images, created_at FROM analyses WHERE id = $1 AND user_id = $2",
         [id, userId]
       );
       if (result.rows.length === 0) {
@@ -52,7 +60,7 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await query(
-      "SELECT id, result, created_at FROM analyses WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10",
+      "SELECT id, result, image1_url, image2_url, images, created_at FROM analyses WHERE user_id = $1 ORDER BY created_at DESC",
       [userId]
     );
 
@@ -74,15 +82,22 @@ export async function POST(req: NextRequest) {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as number;
 
-    const { result, image1_url, image2_url } = await req.json();
+    const { result, image1_url, image2_url, images } = await req.json();
 
     if (!result) {
       return NextResponse.json({ error: "Result is required" }, { status: 400 });
     }
 
-    // Convert URLs to base64 for persistent storage
+    // Convert URLs to base64 for persistent storage if they are local
     const base64Image1 = await urlToBase64(image1_url);
     const base64Image2 = await urlToBase64(image2_url);
+    
+    let processedImages = images || [];
+    if (processedImages.length > 0) {
+      processedImages = await Promise.all(
+        processedImages.map((url: string) => urlToBase64(url))
+      );
+    }
     
     // Also convert any images in the result object if it has an images array
     if (result && Array.isArray(result.images)) {
@@ -92,8 +107,8 @@ export async function POST(req: NextRequest) {
     }
 
     const dbResult = await query(
-      "INSERT INTO analyses (user_id, result, image1_url, image2_url) VALUES ($1, $2, $3, $4) RETURNING id, created_at",
-      [userId, result, base64Image1, base64Image2]
+      "INSERT INTO analyses (user_id, result, image1_url, image2_url, images) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at",
+      [userId, result, base64Image1, base64Image2, processedImages]
     );
 
     return NextResponse.json({ 

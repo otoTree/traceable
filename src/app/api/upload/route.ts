@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import { join } from "path";
 import { v4 as uuidv4 } from "uuid";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import s3Client from "@/lib/s3";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,14 +15,38 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const filename = `${uuidv4()}-${file.name}`;
-    const path = join(process.cwd(), "public/uploads", filename);
+    const extension = file.name.split(".").pop();
+    const filename = `uploads/${uuidv4()}.${extension}`;
 
-    await writeFile(path, buffer);
+    const bucketName = process.env.S3_BUCKET;
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: filename,
+      Body: buffer,
+      ContentType: file.type,
+    });
 
-    // Get the origin (protocol + host) automatically
-    const origin = req.nextUrl.origin;
-    const url = `${origin}/uploads/${filename}`;
+    await s3Client.send(command);
+    
+    // Construct the URL. 
+    // If using a custom endpoint or specific S3 provider, the URL format might vary.
+    // Standard format: https://{bucket}.{endpoint}/{key} or https://{endpoint}/{bucket}/{key}
+    
+    let url = "";
+    const endpoint = process.env.S3_ENDPOINT || "";
+    const cleanEndpoint = endpoint.replace(/^https?:\/\//, "");
+    const protocol = endpoint.startsWith("http://") ? "http" : "https";
+
+    if (process.env.S3_FORCE_PATH_STYLE === "true") {
+      url = `${protocol}://${cleanEndpoint}/${bucketName}/${filename}`;
+    } else {
+      url = `${protocol}://${bucketName}.${cleanEndpoint}/${filename}`;
+    }
+    
+    // If a public URL override is provided (e.g., CDN), use that instead
+    if (process.env.S3_PUBLIC_URL) {
+      url = `${process.env.S3_PUBLIC_URL}/${filename}`;
+    }
     
     return NextResponse.json({ url });
   } catch (error: any) {

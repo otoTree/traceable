@@ -16,9 +16,20 @@ export async function initDb() {
       user_id INTEGER REFERENCES users(id),
       image1_url TEXT,
       image2_url TEXT,
+      images TEXT[] DEFAULT '{}',
       result JSONB,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+  `);
+
+  // Ensure images column exists if table was already created
+  await query(`
+    DO $$ 
+    BEGIN 
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='analyses' AND column_name='images') THEN
+        ALTER TABLE analyses ADD COLUMN images TEXT[] DEFAULT '{}';
+      END IF;
+    END $$;
   `);
 
   await query(`
